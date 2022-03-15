@@ -1,0 +1,171 @@
+import pygame
+import random
+from Layout import *
+
+SCREEN_W = 800
+SCREEN_H = 600
+SIZE = 100
+
+### Class to create ghost/enemy
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self, info):
+        pygame.sprite.Sprite.__init__(self)
+        img = Image("./Img/Enemy.png", SIZE * 0.0007, info["pos"], 0, True)
+        self.image = img.getImg()
+        self.rect = img.getRect()
+        self.speed = random.randrange(1, 3) # Move in random speed
+        self.chgDirection(info["restrict"]) # If located on intersection point
+        self.pause = False # Whether the game is running or paused
+
+    ## Updates movement of ghost
+    def update(self, pathInfo):
+        if not self.pause:
+            self.rect.x += self.moveX
+            self.rect.y += self.moveY
+
+        for path in pathInfo: # Change direction randomly when ghost in intersect path
+            if self.rect.topleft == path["pos"] and "I" in path["restrict"]: self.chgDirection(path["restrict"])
+
+        # When ghost is out of screen
+        if self.rect.y == 0: self.rect.x += self.moveX
+        elif self.rect.x == 0: self.rect.y += self.moveY
+        if self.rect.right < 0: self.rect.left = SCREEN_W
+        elif self.rect.left > SCREEN_W: self.rect.right = 0
+        if self.rect.bottom < 0: self.rect.top= SCREEN_H
+        elif self.rect.top > SCREEN_H: self.rect.bottom = 0
+    
+    ## Changes moving direction of ghost
+    def chgDirection(self, restrict): 
+        if "I" in restrict:
+            direction = random.choice(["L", "R", "U", "D"])
+            while direction in restrict: direction = random.choice(["L", "R", "U", "D"])
+            if direction == "L": self.moveX = -self.speed; self.moveY = 0
+            elif direction == "R": self.moveX = self.speed; self.moveY = 0
+            elif direction == "U": self.moveY = -self.speed; self.moveX = 0
+            elif direction == "D": self.moveY = self.speed; self.moveX = 0
+
+    ## Pauses movement of enemy when game is paused
+    def pauseEnemy(self, pause): self.pause = pause
+
+
+### Class to create player
+class Player(pygame.sprite.Sprite):
+    moveX = moveY = 0
+    gameOver = False
+    pause = False
+
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        img = Image("./Img/Player/1.png", SIZE * 0.005, (x + SIZE * 0.05, y + SIZE * 0.06), 0, True)
+        self.playerImg = img.getImg()
+        self.image = img.getImg()
+        self.rect = img.getRect()
+
+        # To make animation of moving player
+        movingImg = "./Img/Player/" 
+        self.rightAni = Animation(movingImg)
+        self.leftAni = Animation(movingImg, flip = True)
+        self.upAni = Animation(movingImg, 90)
+        self.downAni = Animation(movingImg, 270)        
+
+    def getImage(self): return self.image
+    def getRect(self): return self.rect
+
+    ## Updates the movement of player
+    def update(self, path):
+        if not self.pause:
+            self.rect.x += self.moveX
+            self.rect.y += self.moveY
+
+        # When player is out of screen
+        if self.rect.right < 0: self.rect.left = SCREEN_W
+        elif self.rect.left > SCREEN_W: self.rect.right = 0
+        if self.rect.bottom < 0: self.rect.top = SCREEN_H
+        elif self.rect.top > SCREEN_H: self.rect.bottom = 0
+
+        # Allows player to move in certain directions according to the path it is moving on
+        for wall in pygame.sprite.spritecollide(self, path.getHorizPath(), False): # In horizontal path
+            self.rect.centery = wall.rect.centery
+            self.moveY = 0
+        for wall in pygame.sprite.spritecollide(self, path.getVertPath(), False): # In vertical path
+            self.rect.centerx = wall.rect.centerx
+            self.moveX = 0
+        pygame.sprite.collide_circle_ratio(0.5)
+        for wall in pygame.sprite.spritecollide(self, path.getIntersect(), False): # In intersection point
+            if "U" in wall.restrict and self.moveY < 0 and self.rect.centery <= wall.rect.centery:
+                 self.rect.centery = wall.rect.centery
+            if "D" in wall.restrict and self.moveY > 0 and self.rect.centery >= wall.rect.centery:
+                 self.rect.centery = wall.rect.centery
+            if "L" in wall.restrict and self.moveX < 0 and self.rect.centerx <= wall.rect.centerx:
+                 self.rect.centerx = wall.rect.centerx
+            if "R" in wall.restrict and self.moveX > 0 and self.rect.centerx >= wall.rect.centerx:
+                 self.rect.centerx = wall.rect.centerx
+
+        # Run animation of moving player
+        if self.moveX > 0: 
+            self.rightAni.update(10)
+            self.image = self.rightAni.getCurrent()
+        elif self.moveX < 0:
+            self.leftAni.update(10)
+            self.image = self.leftAni.getCurrent()
+        if self.moveY > 0:
+            self.downAni.update(10)
+            self.image = self.downAni.getCurrent()
+        elif self.moveY < 0:
+            self.upAni.update(10)
+            self.image = self.upAni.getCurrent()
+
+    ## Controls moving direction of player
+    def move(self, key):
+        if self.pause: self.moveX = self.moveY = 0
+        else:
+            if key == pygame.K_RIGHT: self.moveX = 3
+            elif key == pygame.K_LEFT: self.moveX = -3
+            if key == pygame.K_UP: self.moveY = -3
+            elif key == pygame.K_DOWN: self.moveY = 3
+
+    ## Player stops moving when arrow key is released
+    def stopMove(self, key): 
+        if key == pygame.K_RIGHT:
+            if self.moveX != 0: self.image = self.playerImg
+            if self.moveX > 0: self.moveX = 0
+        elif key == pygame.K_LEFT:            
+            if self.moveX != 0: self.image = pygame.transform.flip(self.playerImg, True, False)
+            if self.moveX < 0: self.moveX = 0
+        if key == pygame.K_UP:
+            if self.moveY != 0: self.image = pygame.transform.rotate(self.playerImg, 90)
+            if self.moveY < 0: self.moveY = 0
+        elif key == pygame.K_DOWN: 
+            if self.moveY != 0: self.image = pygame.transform.rotate(self.playerImg, -90)
+            if self.moveY > 0: self.moveY = 0
+
+    ## Restricts player from moving when game is paused
+    def pausePlayer(self, pause): self.pause = pause
+
+
+### Class to create animation of moving player
+class Animation:
+    index = 0
+    clock = 1
+
+    def __init__(self, filename, rotate = 0, flip = False):
+        self.imgList = []
+        self.loadImg(rotate, flip, filename)
+    
+    ## Loads images of animation and changes facing direction accordingly
+    def loadImg(self, rotate, flip, filename):
+        for i in range(1, 7):
+            img = Image(filename + str(i) + ".png", SIZE * 0.005, (0, 0), rotate, True).getImg()
+            if flip: img = pygame.transform.flip(img, True, False)
+            self.imgList.append(img)
+
+    ## Updates animation
+    def update(self, fps = 30):
+        step = 30 // fps
+        if self.clock == 30: self.clock = 1
+        else: self.clock += 1
+        if self.clock in range(1, 30, step):
+            self.index += 1
+            if self.index == len(self.imgList): self.index = 0
+
+    def getCurrent(self): return self.imgList[self.index]

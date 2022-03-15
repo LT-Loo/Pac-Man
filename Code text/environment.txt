@@ -1,0 +1,95 @@
+import pygame
+
+SCREEN_W = 800
+SCREEN_H = 600
+SIZE = 100
+
+### Class to create block of path in game map
+class Path(pygame.sprite.Sprite):
+    def __init__(self, x, y, w, h, restrict = None):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.Surface((w, h), pygame.SRCALPHA, 32).convert_alpha()
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (x, y)
+        self.restrict = restrict # Show which direction is blocked
+
+### Class to create the white dot
+class Dot(pygame.sprite.Sprite):
+    def __init__(self, x, y, r):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.Surface((r, r), pygame.SRCALPHA, 32).convert_alpha()
+        pygame.draw.ellipse(self.image, (250, 250, 250), (0, 0, r, r))
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+
+### Class to create and draw map of game
+class Map:
+    pathInfo = []
+
+    def __init__(self, filename):
+        self.map = open(filename, "r").readlines()
+        self.horizPath = pygame.sprite.Group()
+        self.vertPath = pygame.sprite.Group()
+        self.intersect = pygame.sprite.Group()
+        self.dots = pygame.sprite.Group()
+        self.background = self.getPath_DrawMap()
+
+    ## Collects path info and create path and dots for the game
+    def getPath_DrawMap(self):
+        bg = pygame.Surface((SCREEN_W, SCREEN_H)).convert()
+        bg.fill((1, 1, 30))
+        t = int(SIZE * 0.03) # Thickness of line
+
+        # Draw lines according to numbers and record details of every block of path
+        y = SCREEN_H // len(self.map)
+        for r, row in enumerate(self.map):
+            row = row.strip()
+            x = SCREEN_W // len(row)
+            for c, col in enumerate(row):
+                # Add white dots in every block of path
+                if col != "0": self.dots.add(Dot(c * x + x / 2, r * y + y / 2, SIZE * 0.05))
+
+                if col == "1": # Horizontal path
+                    self.pathInfo.append({"pos": (c * x, r * y), "restrict" : "UD"})
+                    self.horizPath.add(Path(c * x, r * y, x, y, "UD"))
+                    pygame.draw.line(bg, (0, 210, 255), (c * x, r * y), (c * x + x, r * y), t)
+                    pygame.draw.line(bg, (0, 210, 255), (c * x, r * y + y), (c * x + x, r * y + y), t)
+
+                elif col == "2": # Vertical path
+                    self.pathInfo.append({"pos": (c * x, r * y), "restrict": "LR"})
+                    self.vertPath.add(Path(c * x, r * y, x, y, "LR"))
+                    pygame.draw.line(bg, (0, 210, 255), (c * x, r * y), (c * x, r * y + y), t)
+                    pygame.draw.line(bg, (0, 210, 255), (c * x + x, r * y), (c * x + x, r * y + y), t)
+
+                elif col == "3": # Intersect
+                    self.pathInfo.append({"pos": (c * x, r * y), "restrict": "I"})
+                    if c == 0 or row[c - 1] == "0": 
+                        self.pathInfo[-1]["restrict"] += "L"
+                        pygame.draw.line(bg, (0, 210, 255), (c * x, r * y), (c * x, r * y + y), t)
+                    if c == len(row) or row[c + 1] == "0": 
+                        self.pathInfo[-1]["restrict"] += "R"
+                        pygame.draw.line(bg, (0, 210, 255), (c * x + x, r * y), (c * x + x, r * y + y), t)
+                    if r == 0 or self.map[r - 1][c] == "0": 
+                        self.pathInfo[-1]["restrict"] += "U"
+                        pygame.draw.line(bg, (0, 210, 255), (c * x, r * y), (c * x + x, r * y), t)
+                    if r == len(self.map) or self.map[r + 1][c] == "0": 
+                        self.pathInfo[-1]["restrict"] += "D"
+                        pygame.draw.line(bg, (0, 210, 255), (c * x, r * y + y), (c * x + x, r * y + y), t)
+                    self.intersect.add(Path(c * x, r * y, x, y, self.pathInfo[-1]["restrict"]))
+
+        return bg
+    
+    ## Draws and returns map
+    def displayMap(self, screen): 
+        self.horizPath.draw(screen)
+        self.vertPath.draw(screen)
+        self.intersect.draw(screen)
+        screen.blit(self.background, (0, 0))
+        self.dots.draw(screen)
+        return screen
+
+    def getPathInfo(self): return self.pathInfo
+    def getDots(self): return self.dots
+    def getHorizPath(self): return self.horizPath
+    def getVertPath(self): return self.vertPath
+    def getIntersect(self): return self.intersect

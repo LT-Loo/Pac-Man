@@ -1,0 +1,182 @@
+import pygame
+import random
+import math
+import os
+
+from Menu import *
+from Help import *
+from Character import *
+from Environment import Map
+from Layout import *
+
+SCREEN_W = 800
+SCREEN_H = 600
+SIZE = 100
+
+### Class to create new game
+class Game:
+    def __init__(self, filename):
+        self.score = 0
+        self.win = False
+        self.pause = False
+        self.gameOver = False
+        self.map = Map(filename)
+
+        # Create buttons
+        self.pauseB = Button("PAUSE", (SCREEN_W - SIZE * 1.35, SIZE * 0.04), "./Font/Arcade_Classic.TTF", SIZE * 0.3,
+                             (250, 250, 0), (255, 255, 150), (180, 180, 0), "PAUSE", "RESUME")
+        self.quitGameB = Button("QUIT", (SCREEN_W - SIZE * 0.4, SIZE * 0.04), "./Font/Arcade_Classic.TTF", SIZE * 0.3,
+                                (250, 250, 0), (255, 255, 150), (180, 180, 0), "START")
+        self.restartB = Button("PLAY  AGAIN", (SCREEN_W // 2, SCREEN_H // 2 + SIZE * 0.25), "./Font/Arcade_Classic.TTF", SIZE * 0.35,
+                               (250, 250, 0), (255, 255, 150), (180, 180, 0), "RESTART")
+        self.menuB = Button("BACK  TO  MENU", (SCREEN_W // 2, SCREEN_H // 2 + SIZE * 0.7), "./Font/Arcade_Classic.TTF", SIZE * 0.35,
+                                (250, 250, 0), (255, 255, 150), (180, 180, 0), "START")
+        
+        # Create player with initial location randomly selected from intersect points
+        coord = random.choice([path for path in self.map.getPathInfo() if "I" in path["restrict"]])
+        self.player = Player(coord["pos"][0], coord["pos"][1])
+
+        # Create ghosts with initial location randomly selected from intersect points
+        self.ghosts = pygame.sprite.Group()
+        overlap = [coord]
+        for i in range(6):
+            path = random.choice(self.map.getPathInfo())
+            dist = [math.dist(path["pos"], coord["pos"]) for coord in overlap]
+            # Prevent ghost from being too close to each other before the game starts
+            while path in overlap or "I" not in path["restrict"] or min(dist) < 150:
+                path = random.choice(self.map.getPathInfo())
+                dist = [math.dist(path["pos"], coord["pos"]) for coord in overlap]
+            self.ghosts.add(Enemy(path))
+            overlap.append(path)
+       
+    ## Displays game on screen
+    def display(self, screen, buffer = False, timeLeft = None):
+        screen = self.map.displayMap(screen)
+        self.ghosts.draw(screen)
+        if not self.gameOver: screen.blit(self.player.getImage(), self.player.getRect())
+        screen.blit(self.pauseB.getButton(), self.pauseB.getPos())
+        screen.blit(self.quitGameB.getButton(), self.quitGameB.getPos())
+        scoreTitle = Text("SCORE", "./Font/Arcade_Classic.TTF", SIZE * 0.3, (SIZE//2, SIZE * 0.2), (250, 250, 0))
+        screen.blit(scoreTitle.getText(), scoreTitle.getPos())
+        score = Text(str(self.score), "./Font/Arcade_Classic.TTF", SIZE * 0.3, (SIZE * 1.25, SIZE * 0.2), (250, 250, 0))
+        screen.blit(score.getText(), score.getPos())
+
+        if buffer: # Countdown before game starts
+            num = Text(str(timeLeft), "./Font/upheavtt.ttf", SIZE * 3.5, (SCREEN_W//2, SCREEN_H//2), (200, 200, 200))
+            screen.blit(num.getText(), num.getPos())
+
+        if self.gameOver or self.win: # If game over or player wins the game
+            board = pygame.Surface((SCREEN_W // 2.5, SCREEN_H // 2)).convert()
+            board.fill((1, 1, 30))
+            board.set_alpha(230)
+            rect = board.get_rect()
+            rect.center = (SCREEN_W // 2, SCREEN_H // 2)
+            screen.blit(board, rect)
+            pygame.draw.rect(screen, (105, 105, 180), rect, 5, 2)
+            if self.gameOver: # If game over
+                message = Text("GAME OVER", "./Font/papercut.ttf", SIZE * 0.5, (rect.centerx, rect.centery - SIZE * 0.95), (250, 250, 250))
+            else: # If player wins
+                message = Text("CONGRATZZ", "./Font/papercut.ttf", SIZE * 0.5, (rect.centerx, rect.centery - SIZE * 0.95), (250, 250, 250))
+            screen.blit(message.getText(), message.getPos())
+            score = Text("Score  " + str(self.score), "./Font/Arcade_Classic.TTF", SIZE * 0.35, (rect.centerx, rect.centery - SIZE * 0.3), (250, 250, 250))
+            screen.blit(score.getText(), score.getPos())
+            screen.blit(self.restartB.getButton(), self.restartB.getPos())
+            screen.blit(self.menuB.getButton(), self.menuB.getPos())
+        
+        pygame.display.flip() # Update screen displayed
+
+    ## Pauses game
+    def pauseGame(self, pause):
+        self.player.pausePlayer(pause)
+        for ghost in self.ghosts: ghost.pauseEnemy(pause)
+    
+    ## Controls the player and buttons
+    def eventControl(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: pygame.quit()
+
+            if not self.pause: # If game not pause
+                # If key is pressed
+                if event.type == pygame.KEYDOWN: self.player.move(event.key)
+                elif event.type == pygame.KEYUP: self.player.stopMove(event.key)
+
+            if not (self.win or self.gameOver): # If game still running
+                if self.pauseB.hover(event): # Pause or resume game 
+                    if self.pause: self.pause = False
+                    else: self.pause = True
+                    self.pauseGame(self.pause)    
+            else : # If win or lose game
+                if self.restartB.hover(event): return self.restartB.getFunc() # Play again
+                if self.menuB.hover(event): return self.menuB.getFunc() # Return to start up page
+            if self.quitGameB.hover(event): return self.quitGameB.getFunc() # Quit game
+
+    ## Runs game
+    def runGame(self):
+        page = self.eventControl() # Control player and button
+        self.player.update(self.map)
+
+        # Increment score every time a dot is eaten
+        if pygame.sprite.spritecollide(self.player, self.map.getDots(), True): self.score += 1  
+        if not self.map.getDots(): # If all dots eaten, win game
+            self.win = True
+            self.pauseGame(self.win) 
+        
+        for ghost in self.ghosts: # Check if player collides with ghost
+            pygame.sprite.collide_circle_ratio(0.5)
+            if pygame.sprite.collide_mask(self.player, ghost):
+                self.gameOver = True
+                self.pauseGame(self.gameOver)
+        self.ghosts.update(self.map.getPathInfo()) # Update movement of ghosts
+
+        return page # Return screen to display on screen
+
+
+### Runs screens
+def main():
+    pygame.init() # Initialize pygame modules
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    pygame.display.set_caption("PAC-MAN")
+
+    # Create pages
+    startUpPage = Menu()
+    helpPage = Help()
+    #game = Game("./Map/1.txt") 
+
+    clock = pygame.time.Clock()
+    running = True
+    buffer = True
+    nav = "START" # Start up page as initial screen
+
+    while running:
+        temp = nav
+        if "START" in nav: # Start up page
+            buffer = True
+            game = Game("./Map/1.txt") # Create game
+            if nav == "START": # Show start up page
+                startUpPage.display(screen)
+                nav = startUpPage.eventControl()
+            elif nav == "RESTART": nav = "GAME" # Restart game
+
+        elif nav == "GAME": # Show game page and run game
+            if buffer: # Countdown before game starts
+                for i in range(3, 0, -1):
+                    game.display(screen, True, i)
+                    pygame.time.delay(1000)    
+                buffer = False
+            else: # Game runs after countdown
+                game.display(screen) 
+                nav = game.runGame()
+            clock.tick(50)
+        
+        elif nav == "HELP": # Hekp page
+            helpPage.display(screen)
+            nav = helpPage.eventControl()
+
+        elif nav == "QUIT": break # Quit game and terminate program
+
+        if not nav: nav = temp # If NoneType is returned
+        
+    pygame.quit()
+
+
+if __name__ == '__main__': main()
