@@ -16,6 +16,9 @@ There are two types of ghosts in the game:
 - Language: Python
 - Library: Pygame
 
+## How To Play
+Execute the `pacman.py` file to launch the game.
+
 ## Contributors
 | Name | Contribution | Explanation |
 | :---: | :---: | --- |
